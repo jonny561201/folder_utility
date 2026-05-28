@@ -2,6 +2,7 @@
 """Recurse through a top-level folder and print each folder, its files, and their sizes."""
 
 import argparse
+import csv
 import os
 import sys
 
@@ -22,11 +23,18 @@ def file_size(path):
         return None
 
 
-def walk_folder(top, human=True):
-    """Recurse through `top`, printing each folder, its files, and their sizes.
+def scan_folder(top):
+    """Recurse through `top`, yielding (folder, filename, size_bytes) rows.
 
-    Returns the total number of bytes counted across all readable files.
+    `size_bytes` is None for files that can't be read.
     """
+    for dirpath, _dirnames, filenames in os.walk(top):
+        for name in sorted(filenames):
+            yield dirpath, name, file_size(os.path.join(dirpath, name))
+
+
+def print_folder(top, human=True):
+    """Print each folder, its files, and their sizes. Returns total bytes."""
     total = 0
     for dirpath, _dirnames, filenames in os.walk(top):
         print(f"\n{dirpath}/")
@@ -44,19 +52,42 @@ def walk_folder(top, human=True):
     return total
 
 
+def write_csv(top, out_path):
+    """Write the scan results to a CSV file. Returns total bytes counted."""
+    total = 0
+    with open(out_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["folder", "filename", "size_bytes", "size_human"])
+        for folder, name, size in scan_folder(top):
+            if size is None:
+                writer.writerow([folder, name, "", "unreadable"])
+                continue
+            total += size
+            writer.writerow([folder, name, size, human_readable(size)])
+    return total
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("folder", nargs="?", default=".",
                         help="top-level folder to scan (default: current directory)")
     parser.add_argument("-b", "--bytes", action="store_true",
                         help="show raw byte counts instead of human-readable sizes")
+    parser.add_argument("-o", "--csv", metavar="PATH",
+                        help="write results to a CSV file at PATH")
     args = parser.parse_args(argv)
 
     if not os.path.isdir(args.folder):
         print(f"error: '{args.folder}' is not a directory", file=sys.stderr)
         return 1
 
-    total = walk_folder(args.folder, human=not args.bytes)
+    if args.csv:
+        total = write_csv(args.folder, args.csv)
+        shown = f"{total} B" if args.bytes else human_readable(total)
+        print(f"Wrote results to {args.csv}  (total: {shown})")
+        return 0
+
+    total = print_folder(args.folder, human=not args.bytes)
     shown = f"{total} B" if args.bytes else human_readable(total)
     print(f"\nTotal: {shown}")
     return 0
