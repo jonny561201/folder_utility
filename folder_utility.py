@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
-"""Recurse through a top-level folder and print each folder, its files, and their sizes."""
+"""Recurse a top-level folder and report each folder, its files, and their sizes.
 
-import argparse
+Edit the settings below, then run:  python folder_utility.py
+"""
+
 import csv
 import os
-import sys
+
+# ---- settings -------------------------------------------------------------
+TOP_FOLDER = "."            # top-level folder to scan
+CSV_OUTPUT = "report.csv"   # path to write the CSV to (set to None to skip the CSV)
+PRINT_TO_CONSOLE = True     # also print results to the console
+# ---------------------------------------------------------------------------
 
 
 def human_readable(size):
@@ -24,74 +31,51 @@ def file_size(path):
 
 
 def scan_folder(top):
-    """Recurse through `top`, yielding (folder, filename, size_bytes) rows.
+    """Recurse through `top`, returning a list of (folder, filename, size_bytes).
 
     `size_bytes` is None for files that can't be read.
     """
+    rows = []
     for dirpath, _dirnames, filenames in os.walk(top):
         for name in sorted(filenames):
-            yield dirpath, name, file_size(os.path.join(dirpath, name))
+            rows.append((dirpath, name, file_size(os.path.join(dirpath, name))))
+    return rows
 
 
-def print_folder(top, human=True):
-    """Print each folder, its files, and their sizes. Returns total bytes."""
-    total = 0
-    for dirpath, _dirnames, filenames in os.walk(top):
-        print(f"\n{dirpath}/")
-        if not filenames:
-            print("    (no files)")
-            continue
-        for name in sorted(filenames):
-            size = file_size(os.path.join(dirpath, name))
-            if size is None:
-                print(f"    {name:<40} <unreadable>")
-                continue
-            total += size
-            shown = human_readable(size) if human else f"{size} B"
-            print(f"    {name:<40} {shown:>12}")
-    return total
+def print_results(rows):
+    """Print each folder, its files, and their sizes."""
+    current = None
+    for folder, name, size in rows:
+        if folder != current:
+            print(f"\n{folder}/")
+            current = folder
+        shown = "<unreadable>" if size is None else human_readable(size)
+        print(f"    {name:<40} {shown:>12}")
+    total = sum(s for _, _, s in rows if s is not None)
+    print(f"\nTotal: {human_readable(total)}")
 
 
-def write_csv(top, out_path):
-    """Write the scan results to a CSV file. Returns total bytes counted."""
-    total = 0
+def write_csv(rows, out_path):
+    """Write scan rows to a CSV file with byte and human-readable sizes."""
     with open(out_path, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["folder", "filename", "size_bytes", "size_human"])
-        for folder, name, size in scan_folder(top):
+        for folder, name, size in rows:
             if size is None:
                 writer.writerow([folder, name, "", "unreadable"])
-                continue
-            total += size
-            writer.writerow([folder, name, size, human_readable(size)])
-    return total
+            else:
+                writer.writerow([folder, name, size, human_readable(size)])
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("folder", nargs="?", default=".",
-                        help="top-level folder to scan (default: current directory)")
-    parser.add_argument("-b", "--bytes", action="store_true",
-                        help="show raw byte counts instead of human-readable sizes")
-    parser.add_argument("-o", "--csv", metavar="PATH",
-                        help="write results to a CSV file at PATH")
-    args = parser.parse_args(argv)
-
-    if not os.path.isdir(args.folder):
-        print(f"error: '{args.folder}' is not a directory", file=sys.stderr)
-        return 1
-
-    if args.csv:
-        total = write_csv(args.folder, args.csv)
-        shown = f"{total} B" if args.bytes else human_readable(total)
-        print(f"Wrote results to {args.csv}  (total: {shown})")
-        return 0
-
-    total = print_folder(args.folder, human=not args.bytes)
-    shown = f"{total} B" if args.bytes else human_readable(total)
-    print(f"\nTotal: {shown}")
-    return 0
+def run(top=TOP_FOLDER, csv_output=CSV_OUTPUT, print_to_console=PRINT_TO_CONSOLE):
+    """Scan `top` once, then optionally print and/or write a CSV."""
+    rows = scan_folder(top)
+    if print_to_console:
+        print_results(rows)
+    if csv_output:
+        write_csv(rows, csv_output)
+        print(f"\nWrote CSV to {csv_output}")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    run()
