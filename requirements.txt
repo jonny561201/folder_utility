@@ -1,0 +1,5 @@
+# Reading codec/resolution needs pymediainfo AND the native libmediainfo library.
+# libmediainfo is a system package, not a pip package - install it separately:
+#   apt install libmediainfo0v5     # Debian/Ubuntu
+#   brew install mediainfo          # macOS
+pymediainfo>=6.0
